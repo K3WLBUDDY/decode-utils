@@ -5,6 +5,10 @@
 #include <vector>
 #include <cmath>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 constexpr float g_quantizationMatrix[] = {
     16, 11, 10, 16, 24, 40, 51, 61,
     12, 12, 14, 19, 26, 58, 60, 55,
@@ -38,7 +42,7 @@ class MCU {
         uint32_t currentIdx {0};
         uint32_t mcuSize {8};
     public:
-        void CreateMCUs(uint32_t *array, uint32_t size, uint32_t rows, uint32_t cols);
+        int CreateMCUs(int32_t *array, uint32_t size, int32_t rows, int32_t cols);
         uint32_t NumMCUs() const;
         void PrintMCU(uint32_t idx) const;
         void PrintDCTCoefficients(uint32_t idx) const;
@@ -124,22 +128,32 @@ void MCU::Quantify() {
     }
 }
 
-void MCU::CreateMCUs(uint32_t *array, uint32_t size, uint32_t rows, uint32_t cols)
+int MCU::CreateMCUs(int32_t *array, uint32_t size, int32_t rows, int32_t cols)
 {
     // Four nested for loops because why not?
     uint32_t mapIdx = 0U;
-    for (uint32_t outerRows = 0U; outerRows <= (size - (rows * mcuSize)); outerRows += rows * mcuSize) {
-        for (uint32_t innerRow = outerRows; innerRow <= ((outerRows + rows) - mcuSize); innerRow += mcuSize) {
+    for (uint32_t outerRows = 0U; outerRows <= (size - (rows * mcuSize)); outerRows += cols * mcuSize) {
+        std::cout << "DBG Outer row" << outerRows << "\n";
+        for (uint32_t innerRow = outerRows; innerRow <= ((outerRows + cols) - mcuSize); innerRow += mcuSize) {
+            std::cout << "DBG inner row: " << innerRow << "\n";
+            std::cout << "DBG inner row limit: " << ((outerRows + rows) - mcuSize) << "\n";
             std::vector<int> tempVector;
             for (uint32_t stride = 0U; stride < mcuSize; stride++) {
                 for (uint32_t idx = 0U; idx < mcuSize; idx++) {
-                    int val = array[innerRow + (stride * rows) + idx];
+                    int pos = innerRow + (stride * cols) + idx;
+                    int val = 0;
+                    if (pos < size) {
+                        val = array[pos];
+                    }
+                    std::cout << "VAL: " << val << " Pos: " << pos << "\n";
+                    std::cout << "CurrentIdx: " << innerRow + (stride * cols) + idx << " Inner row: " << innerRow << " stride: " << stride <<  " Idx: " << idx << "\n" ;
                     tempVector.emplace_back(val);
                 }
             }
             elements.emplace(std::make_pair(mapIdx++, tempVector));
         }
     }
+    return elements.size();
 }
 
 void MCU::PrintMCU(uint32_t idx) const {
@@ -203,8 +217,12 @@ int main()
     const char *sourcePath = "/home/sruthik/repos/image-utils/rgb888_24x13.ppm";
     const char *destinationPath = "/home/sruthik/repos/image-utils/nv12_image_st.y4m";
 #else
-    const char *sourcePath = "C:\\Users\\psrut\\Downloads\\image.ppm";
-    const char *destinationPath = "C:\\Users\\psrut\\Downloads\\image_yuv444.y4m";
+#if 1
+    const char *sourcePath = "C:\\repos\\image-utils\\rgb888_24x13.ppm";
+#else
+    const char *sourcePath = "C:\\repos\\image-utils\\rgb888_2560.ppm";
+#endif
+    const char *destinationPath = "C:\\repos\\image-utils\\nv12_image_st.y4m";
 #endif // __linux__
     const uint32_t numComponents = 3U;
     FILE *sourceFile = nullptr;
@@ -263,9 +281,9 @@ int main()
     std::cout << "sourceBufferSize : " << sourceBufferSize << "\n";
     sourceBuffer = new uint32_t[sourceBufferSize];
     std::cout << "Plane size: " << sourceBufferSize / numComponents << "\n";
-    uint32_t *yPlaneBuffer = new uint32_t[sourceBufferSize / numComponents];
-    uint32_t *uPlaneBuffer = new uint32_t[sourceBufferSize / numComponents];
-    uint32_t *vPlaneBuffer = new uint32_t[sourceBufferSize / numComponents];
+    int32_t *yPlaneBuffer = new int32_t[(sourceBufferSize / numComponents) + 100];
+    int32_t *uPlaneBuffer = new int32_t[(sourceBufferSize / numComponents) + 100];
+    int32_t *vPlaneBuffer = new int32_t[(sourceBufferSize / numComponents) + 100];
 
     uint32_t idx = 0U;
     while ((fgetc(sourceFile)) != EOF) {
@@ -277,7 +295,7 @@ int main()
     idx = 0U;
     std::cout << "Source buffer size: " << sourceBufferSize << "\n";
     auto startTime = std::chrono::high_resolution_clock::now();
-    for (; idx < sourceBufferSize; idx+=3) {
+    for (; idx < sourceBufferSize; idx+=numComponents) {
         yPlaneBuffer[currentPos] = (0.257F * sourceBuffer[idx]) + (0.504F * sourceBuffer[idx + 1]) + (0.098F * sourceBuffer[idx + 2]) + 16;
         uPlaneBuffer[currentPos] = (0.439F * sourceBuffer[idx + 2]) - (0.148F * sourceBuffer[idx]) - (0.291F * sourceBuffer[idx + 1]) + 128;
         vPlaneBuffer[currentPos] = 0.439F * sourceBuffer[idx] - (0.368F * sourceBuffer[idx+1]) - (0.071F * sourceBuffer[idx + 2]) + 128;
@@ -327,57 +345,65 @@ int main()
     std::cout << "Writing time: " << duration << "s\n";
 
 */
-    // Create a copy of the YUV buffers for JPEG Encoding
-    uint32_t *yPlaneCopy = new uint32_t[sourceBufferSize / numComponents];
-    uint32_t *uPlaneCopy = new uint32_t[sourceBufferSize / numComponents];
-    uint32_t *vPlaneCopy = new uint32_t[sourceBufferSize / numComponents];
-
-    memcpy(yPlaneCopy, yPlaneBuffer, sizeof(yPlaneBuffer));
-    memcpy(uPlaneCopy, uPlaneBuffer, sizeof(uPlaneBuffer));
-    memcpy(vPlaneCopy, vPlaneBuffer, sizeof(vPlaneBuffer));
 
     // Shift range of pixels from [0, 255] to [-128, 128]
     for (uint32_t idx = 0U; idx < sourceBufferSize / numComponents; idx++) {
-        yPlaneCopy[idx] -= 128U;
-        uPlaneCopy[idx] -= 128U;
-        vPlaneCopy[idx] -= 128U;
+        yPlaneBuffer[idx] -= 128U;
+        uPlaneBuffer[idx] -= 128U;
+        vPlaneBuffer[idx] -= 128U;
     }
 
     // The raw pixel data now needs to be divided into 8x8 blocks
     // (MCUs).
     //
     // For now assume the dimensions of the image to be divisible by 8
+    std::cout << "WidthxHeight: " << width <<"x" << height << "\n";
     startTime = std::chrono::high_resolution_clock::now();
-    yMCU.CreateMCUs(yPlaneCopy, (sourceBufferSize / numComponents), height, width);
+    std::cout << "24: " << yPlaneBuffer[24] << "\n";
+    uint32_t yMCUSize = yMCU.CreateMCUs(yPlaneBuffer, (sourceBufferSize / numComponents), height, width);
     endTime = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
     std::cerr << "Y MCU Creation time: " << duration << "ms\n";
+
     startTime = std::chrono::high_resolution_clock::now();
-    uMCU.CreateMCUs(uPlaneCopy, (sourceBufferSize / numComponents), height, width);
+    uint32_t uMCUSize = uMCU.CreateMCUs(uPlaneBuffer, (sourceBufferSize / numComponents), height, width);
     endTime = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
     std::cerr << "U MCU Creation time: " << duration << "ms\n";
+
     startTime = std::chrono::high_resolution_clock::now();
-    vMCU.CreateMCUs(vPlaneCopy, (sourceBufferSize / numComponents), height, width);
+    uint32_t vMCUSize = vMCU.CreateMCUs(vPlaneBuffer, (sourceBufferSize / numComponents), height, width);
     endTime = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
     std::cerr << "V MCU Creation time: " << duration << "ms\n";
+
+    // Compute the DCT for each MCU
     startTime = std::chrono::high_resolution_clock::now();
     yMCU.ComputeDCT();
     endTime = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
     std::cerr << "Y DCT time: " << duration << "ms\n";
+
     startTime = std::chrono::high_resolution_clock::now();
     uMCU.ComputeDCT();
     endTime = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
     std::cout << "U DCT time: " << duration << "ms\n";
+
     startTime = std::chrono::high_resolution_clock::now();
     vMCU.ComputeDCT();
     endTime = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
     std::cout << "V DCT time: " << duration << "ms\n";
-
+    std::cout << "Y MCU:" << "\n";
+    for (uint32_t idx = 0U; idx < yMCUSize; idx++) {
+        yMCU.PrintMCU(idx);
+    }
+    std::cout << "Y DCT: " << "\n";
+    for (uint32_t idx = 0U; idx < yMCUSize; idx++) {
+        yMCU.PrintDCTCoefficients(idx);
+    }
+    
     // Quantization step
     startTime = std::chrono::high_resolution_clock::now();
     yMCU.Quantify();
@@ -394,6 +420,11 @@ int main()
     endTime = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
     std::cerr << "V Quantization time: " << duration << "ms\n";
+    std::cout << "Quantized matrices: " << "\n";
+    for (uint32_t idx = 0U; idx < yMCUSize; idx++) {
+        yMCU.PrintDCTCoefficients(idx);
+    }
+    
 
     // Run length encoding of the quantized MCUs
     yMCU.GenerateRLE();
@@ -405,16 +436,11 @@ int main()
     uMCU.GenerateDCCoefficientDifferences();
     vMCU.GenerateDCCoefficientDifferences();
 
-    yMCU.PrintDCCoefficientDifferences(47);
-
     delete[] sourceBuffer;
-    //delete[] yPlaneBuffer;
-    //delete[] uPlaneBuffer;
-    if (vPlaneBuffer)
+    delete[] yPlaneBuffer;
+    delete[] uPlaneBuffer;
     delete[] vPlaneBuffer;
-    delete[] yPlaneCopy;
-    delete[] uPlaneCopy;
-    delete[] vPlaneCopy;
+
     fclose(sourceFile);
     fclose(destinationFile);
 }
